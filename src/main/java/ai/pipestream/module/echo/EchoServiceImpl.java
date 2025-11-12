@@ -14,6 +14,37 @@ import org.jboss.logging.Logger;
 
 import java.time.Instant;
 
+/**
+ * Echo Service implementation for the PipeStream pipeline processing framework.
+ * <p>
+ * This module provides a simple echo service that accepts documents, adds metadata tags,
+ * and returns the enriched document. It serves as a reference implementation and testing
+ * module for the PipeStream document processing pipeline.
+ * </p>
+ *
+ * <h2>Key Features:</h2>
+ * <ul>
+ *   <li>Document pass-through with metadata enrichment</li>
+ *   <li>Automatic service registration with health checks</li>
+ *   <li>Processing buffer support for batch operations</li>
+ *   <li>Test mode with sample data generation</li>
+ * </ul>
+ *
+ * <h2>Metadata Added:</h2>
+ * The service adds the following tags to each processed document:
+ * <ul>
+ *   <li><code>processed_by_echo</code> - The application name</li>
+ *   <li><code>echo_timestamp</code> - ISO-8601 timestamp of processing</li>
+ *   <li><code>echo_module_version</code> - Version of the echo module</li>
+ *   <li><code>echo_stream_id</code> - Stream ID from request metadata (if available)</li>
+ *   <li><code>echo_step_name</code> - Pipeline step name from request metadata (if available)</li>
+ * </ul>
+ *
+ * @author PipeStream Team
+ * @version 1.0.0
+ * @see MutinyPipeStepProcessorGrpc.PipeStepProcessorImplBase
+ * @since 1.0.0
+ */
 @GrpcService
 @Singleton
 @GrpcServiceRegistration(
@@ -29,6 +60,48 @@ public class EchoServiceImpl extends MutinyPipeStepProcessorGrpc.PipeStepProcess
     @Inject
     PipeDocTestDataFactory pipeDocTestDataFactory;
 
+    /**
+     * Processes a document by echoing it back with enriched metadata.
+     * <p>
+     * This method accepts a {@link ModuleProcessRequest} containing a document and optional metadata,
+     * enriches the document with processing information in the form of tags, and returns it in the
+     * response. The original document structure is preserved while metadata is added to the
+     * {@code SearchMetadata.Tags} field.
+     * </p>
+     *
+     * <h3>Processing Behavior:</h3>
+     * <ul>
+     *   <li>If a document is present, it is echoed back with added metadata tags</li>
+     *   <li>Existing tags are preserved and new echo-specific tags are appended</li>
+     *   <li>Processing logs are added to track the operation</li>
+     *   <li>The response always indicates success unless an error occurs</li>
+     * </ul>
+     *
+     * <h3>Added Metadata Tags:</h3>
+     * <ul>
+     *   <li><code>processed_by_echo</code> - Application name from configuration</li>
+     *   <li><code>echo_timestamp</code> - ISO-8601 formatted current timestamp</li>
+     *   <li><code>echo_module_version</code> - Current module version (1.0.0)</li>
+     *   <li><code>echo_stream_id</code> - Stream ID from request metadata (if present)</li>
+     *   <li><code>echo_step_name</code> - Pipeline step name from request metadata (if present)</li>
+     * </ul>
+     *
+     * @param request the {@link ModuleProcessRequest} containing the document to process and optional metadata.
+     *                May contain:
+     *                <ul>
+     *                  <li>{@code document} - The PipeDoc to process (optional)</li>
+     *                  <li>{@code metadata} - Service metadata including stream ID and step name (optional)</li>
+     *                </ul>
+     * @return a {@link Uni} emitting a {@link ModuleProcessResponse} containing:
+     *         <ul>
+     *           <li>{@code success} - Always true for this echo implementation</li>
+     *           <li>{@code outputDoc} - The input document enriched with metadata (if input document was present)</li>
+     *           <li>{@code processorLogs} - List of processing log messages</li>
+     *         </ul>
+     * @see ProcessingBuffered
+     * @see ModuleProcessRequest
+     * @see ModuleProcessResponse
+     */
     @Override
     @ProcessingBuffered(type = PipeDoc.class, enabled = "${processing.buffer.enabled:false}")
     public Uni<ModuleProcessResponse> processData(ModuleProcessRequest request) {
@@ -89,6 +162,48 @@ public class EchoServiceImpl extends MutinyPipeStepProcessorGrpc.PipeStepProcess
         return Uni.createFrom().item(response);
     }
 
+    /**
+     * Provides service registration metadata and performs optional health checks.
+     * <p>
+     * This method returns comprehensive metadata about the echo service, including version information,
+     * capabilities, and system details. If the request includes a test request, a health check is
+     * performed by processing the test data and validating the service's functionality.
+     * </p>
+     *
+     * <h3>Registration Metadata Includes:</h3>
+     * <ul>
+     *   <li><strong>Module Information:</strong> Name, version, display name, description, owner</li>
+     *   <li><strong>Tags:</strong> pipeline-module, echo, processor</li>
+     *   <li><strong>System Info:</strong> Operating system, JVM version</li>
+     *   <li><strong>Implementation Details:</strong> Language (Java), SDK version</li>
+     *   <li><strong>Timestamps:</strong> Registration timestamp with nanosecond precision</li>
+     *   <li><strong>Health Status:</strong> Result of health check if test request is provided</li>
+     * </ul>
+     *
+     * <h3>Health Check Behavior:</h3>
+     * <p>
+     * If {@code request.hasTestRequest()} returns true, the method will:
+     * </p>
+     * <ol>
+     *   <li>Process the test request using {@link #processData(ModuleProcessRequest)}</li>
+     *   <li>Set {@code healthCheckPassed} based on the processing result</li>
+     *   <li>Include detailed health check messages</li>
+     *   <li>Catch and report any exceptions during health check</li>
+     * </ol>
+     *
+     * @param request the {@link RegistrationRequest} which may optionally contain:
+     *                <ul>
+     *                  <li>{@code testRequest} - A test document for health check validation (optional)</li>
+     *                </ul>
+     * @return a {@link Uni} emitting {@link ServiceRegistrationMetadata} containing:
+     *         <ul>
+     *           <li>Complete service metadata and capabilities</li>
+     *           <li>Health check results (if test request was provided)</li>
+     *           <li>System and runtime information</li>
+     *         </ul>
+     * @see RegistrationRequest
+     * @see ServiceRegistrationMetadata
+     */
     @Override
     public Uni<ServiceRegistrationMetadata> getServiceRegistration(RegistrationRequest request) {
         LOG.debug("Echo service registration requested");
@@ -153,6 +268,51 @@ public class EchoServiceImpl extends MutinyPipeStepProcessorGrpc.PipeStepProcess
         }
     }
 
+    /**
+     * Test version of the document processing method with automatic test data generation.
+     * <p>
+     * This method provides a testing endpoint that behaves similarly to {@link #processData(ModuleProcessRequest)}
+     * but with additional test-specific features. If no document is provided in the request, a complex test
+     * document is automatically generated using {@link PipeDocTestDataFactory}.
+     * </p>
+     *
+     * <h3>Test Mode Features:</h3>
+     * <ul>
+     *   <li>Automatic test document generation if none provided</li>
+     *   <li>Default test metadata (test-stream, test-step, test-pipeline)</li>
+     *   <li>All processor logs are prefixed with [TEST] marker</li>
+     *   <li>Additional test validation log message appended</li>
+     * </ul>
+     *
+     * <h3>Generated Test Document:</h3>
+     * <p>
+     * When no document is provided, the method generates a complex test document with ID 10101
+     * and default test metadata including:
+     * </p>
+     * <ul>
+     *   <li>Stream ID: test-stream</li>
+     *   <li>Step Name: test-step</li>
+     *   <li>Pipeline Name: test-pipeline</li>
+     * </ul>
+     *
+     * <h3>Usage:</h3>
+     * <p>
+     * This method is particularly useful for:
+     * </p>
+     * <ul>
+     *   <li>Automated health checks</li>
+     *   <li>Integration testing</li>
+     *   <li>Validation of pipeline configuration</li>
+     *   <li>Smoke tests during deployment</li>
+     * </ul>
+     *
+     * @param request the {@link ModuleProcessRequest} which may contain a test document,
+     *                or can be null/empty to trigger automatic test data generation
+     * @return a {@link Uni} emitting a {@link ModuleProcessResponse} with all processor logs
+     *         prefixed with [TEST] and an additional test validation message
+     * @see #processData(ModuleProcessRequest)
+     * @see PipeDocTestDataFactory#createComplexDocument(long)
+     */
     @Override
     public Uni<ModuleProcessResponse> testProcessData(ModuleProcessRequest request) {
         LOG.debug("TestProcessData called - executing test version of processing");
