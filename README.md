@@ -4,556 +4,373 @@
 [![Java Version](https://img.shields.io/badge/Java-21-blue.svg)](https://www.oracle.com/java/technologies/javase/jdk21-archive-downloads.html)
 [![Quarkus](https://img.shields.io/badge/Quarkus-Framework-4695EB.svg)](https://quarkus.io/)
 
-A simple, efficient echo module for the PipeStream document processing pipeline that validates document flow and enriches documents with processing metadata.
+A lightweight, pass-through document processor for the PipeStream pipeline framework. The echo module serves as both a reference implementation and a practical tool for testing and validating pipeline configurations.
 
-## Table of Contents
+## What is it?
 
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [API Documentation](#api-documentation)
-- [Development](#development)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Contributing](#contributing)
-- [License](#license)
+The echo module is the simplest possible pipeline processor - it receives documents and returns them unchanged, while adding metadata tags that track the document's journey through the pipeline. Think of it as a "hello world" for pipeline development, but with real utility.
 
-## Overview
+**Why does this exist?**
+- **Validate pipeline connectivity** - Quickly verify that your pipeline is correctly wired
+- **Debug document flow** - Track documents as they move through processing stages
+- **Reference implementation** - See how to build a compliant pipeline module
+- **Load testing** - Test pipeline throughput without complex processing logic
 
-The Echo Module is a reference implementation and testing service for the PipeStream pipeline processing framework. It demonstrates the core functionality of a pipeline processor while providing a simple, predictable behavior that makes it ideal for:
+## Quick Start
 
-- **Pipeline validation** - Verify that your pipeline configuration is working correctly
-- **Integration testing** - Test pipeline connectivity and data flow
-- **Development reference** - Serve as a template for building new pipeline modules
-- **Smoke testing** - Quick validation during deployment and configuration changes
-
-The module accepts documents, enriches them with metadata tags, and returns them unchanged otherwise, making it perfect for testing without side effects.
-
-## Features
-
-### Core Functionality
-
-- **Document Pass-Through** - Receives documents and returns them with preserved content
-- **Metadata Enrichment** - Adds processing metadata tags to track document flow
-- **Health Checks** - Built-in health check endpoints with test data validation
-- **Service Registration** - Automatic registration with the PipeStream registry using Consul
-- **gRPC Protocol** - High-performance gRPC communication with Mutiny reactive support
-- **Processing Buffer Support** - Optional batch processing via `@ProcessingBuffered` annotation
-
-### Metadata Tags Added
-
-The echo module enriches each processed document with the following tags:
-
-| Tag Name | Description | Example Value |
-|----------|-------------|---------------|
-| `processed_by_echo` | Application name from configuration | `echo` |
-| `echo_timestamp` | ISO-8601 timestamp of processing | `2025-11-12T10:30:45.123Z` |
-| `echo_module_version` | Version of the echo module | `1.0.0` |
-| `echo_stream_id` | Stream ID from request metadata | `stream-123` |
-| `echo_step_name` | Pipeline step name from metadata | `validation-step` |
-
-## Architecture
-
-### Technology Stack
-
-- **Framework**: Quarkus 3.x - Supersonic Subatomic Java
-- **Communication**: gRPC with Mutiny reactive streams
-- **Service Discovery**: Consul via Smallrye Stork
-- **Language**: Java 21
-- **Build Tool**: Gradle 8.x
-- **Testing**: JUnit 5, REST Assured, gRPC WireMock
-
-### Module Structure
-
-```
-module-echo/
-├── src/
-│   ├── main/
-│   │   ├── java/ai/pipestream/module/echo/
-│   │   │   └── EchoServiceImpl.java          # Main service implementation
-│   │   └── resources/
-│   │       └── application.properties         # Configuration
-│   ├── test/
-│   │   └── java/ai/pipestream/module/echo/   # Unit and component tests
-│   └── integrationTest/
-│       └── java/ai/pipestream/module/echo/   # Integration tests
-├── build.gradle                               # Gradle build configuration
-├── settings.gradle                            # Gradle settings
-└── README.md                                  # This file
-```
-
-### Service Implementation
-
-The `EchoServiceImpl` class extends `MutinyPipeStepProcessorGrpc.PipeStepProcessorImplBase` and implements three key methods:
-
-1. **`processData(ModuleProcessRequest)`** - Main processing method that enriches documents
-2. **`getServiceRegistration(RegistrationRequest)`** - Provides service metadata and health checks
-3. **`testProcessData(ModuleProcessRequest)`** - Test endpoint with automatic test data generation
-
-## Installation
-
-### Prerequisites
-
-- Java 21 or higher
-- Gradle 8.x or higher
-- Docker (for containerized deployment)
-- Consul (for service discovery)
-
-### Building from Source
+### Running Locally
 
 ```bash
-# Clone the repository
-git clone https://github.com/ai-pipestream/module-echo.git
-cd module-echo
+# Development mode with hot reload
+./gradlew quarkusDev
 
-# Build the project
-./gradlew build
-
-# Build Docker image
-./gradlew build -Dquarkus.container-image.build=true
+# The service will start on http://localhost:39000/echo
 ```
 
-### Maven/Gradle Dependency
+The module automatically registers with Consul for service discovery. In development mode, it expects Consul at `localhost:8500`.
 
-Add the echo module to your project:
+### Using in Your Pipeline
 
-**Gradle:**
-```gradle
-dependencies {
-    implementation 'ai.pipestream.module:module-echo:0.1.2-SNAPSHOT'
+Add the echo module to your pipeline configuration as a processing step. Documents passing through will be enriched with metadata tags that track their processing:
+
+```yaml
+# Example pipeline configuration
+steps:
+  - name: validation
+    module: echo
+    # Documents receive tags like processed_by_echo, echo_timestamp, etc.
+```
+
+## How It Works
+
+### Core Behavior
+
+The echo module implements three gRPC endpoints defined in the `PipeStepProcessor` service:
+
+**1. processData** - The main processing endpoint
+```java
+public Uni<ModuleProcessResponse> processData(ModuleProcessRequest request)
+```
+
+This is where documents flow through. The implementation is intentionally simple:
+
+```java
+// From EchoServiceImpl.java:107-163
+@Override
+@ProcessingBuffered(type = PipeDoc.class, enabled = "${processing.buffer.enabled:false}")
+public Uni<ModuleProcessResponse> processData(ModuleProcessRequest request) {
+    // 1. Receives document and metadata from the request
+    // 2. Preserves existing document content unchanged
+    // 3. Adds processing metadata tags to SearchMetadata.Tags field
+    // 4. Returns enriched document in the response
 }
 ```
 
-**Maven:**
-```xml
-<dependency>
-    <groupId>ai.pipestream.module</groupId>
-    <artifactId>module-echo</artifactId>
-    <version>0.1.2-SNAPSHOT</version>
-</dependency>
+**Why this matters:** This demonstrates the contract that all pipeline processors follow - receive a document, process it, return results. The echo module fulfills this contract in the simplest way possible, making it easy to understand the pattern.
+
+**Metadata tags added:**
+- `processed_by_echo` - Identifies which service processed the document
+- `echo_timestamp` - When processing occurred (ISO-8601 format)
+- `echo_module_version` - Module version for tracking
+- `echo_stream_id` / `echo_step_name` - Pipeline context (when available)
+
+These tags accumulate as documents flow through multiple echo instances, creating an audit trail.
+
+---
+
+**2. getServiceRegistration** - Service discovery and health checks
+```java
+public Uni<ServiceRegistrationMetadata> getServiceRegistration(RegistrationRequest request)
 ```
+
+Returns metadata about the service (name, version, capabilities) and can optionally validate health by processing a test document:
+
+```java
+// From EchoServiceImpl.java:135-153
+@Override
+public Uni<ServiceRegistrationMetadata> getServiceRegistration(RegistrationRequest request) {
+    // If request includes a test document:
+    //   1. Processes it through processData()
+    //   2. Validates the result
+    //   3. Sets healthCheckPassed accordingly
+    //
+    // Returns comprehensive service metadata including:
+    //   - Module name, version, capabilities
+    //   - System info (OS, JVM version)
+    //   - Health check status
+}
+```
+
+**Why this matters:** The PipeStream framework uses this for automatic service discovery. When the echo module starts, it registers itself with the registry service, making it available for pipeline orchestration. The optional health check ensures the module is functioning correctly before accepting traffic.
+
+---
+
+**3. testProcessData** - Testing endpoint with synthetic data
+```java
+public Uni<ModuleProcessResponse> testProcessData(ModuleProcessRequest request)
+```
+
+A specialized testing endpoint that generates test documents on-demand:
+
+```java
+// From EchoServiceImpl.java:202-186
+@Override
+public Uni<ModuleProcessResponse> testProcessData(ModuleProcessRequest request) {
+    // If no document provided, automatically generates a complex test document
+    // Processes it through normal processData() flow
+    // Prefixes all logs with [TEST] marker
+    // Returns result with test validation message
+}
+```
+
+**Why this matters:** This enables automated health checks without requiring test data to be passed in. Useful for smoke tests during deployment where you want to verify the service works but don't have real documents available.
+
+### Architecture Choices
+
+**Why gRPC?** The PipeStream framework uses gRPC for high-performance, strongly-typed communication between services. This enables efficient streaming of large documents (up to 2GB) with minimal overhead.
+
+**Why Mutiny?** Quarkus's reactive programming model (via Mutiny) allows the echo module to handle many concurrent requests efficiently without blocking threads. The `Uni<T>` return type represents a single asynchronous result.
+
+**Why Consul?** Service discovery via Consul allows pipeline modules to find each other dynamically. No hardcoded hostnames or ports - services register themselves and discover dependencies at runtime.
 
 ## Configuration
 
-### Application Properties
-
-Key configuration properties in `src/main/resources/application.properties`:
+The module is configured via `src/main/resources/application.properties`. Key settings:
 
 ```properties
-# Module Identity
+# Module identity - how other services find this module
 module.name=echo
 quarkus.application.name=echo
 
-# Server Configuration
-quarkus.http.port=39000
-quarkus.http.host=0.0.0.0
-quarkus.http.root-path=/echo
+# Network configuration
+quarkus.http.port=39000              # HTTP and gRPC server port
+quarkus.http.root-path=/echo         # Base path for HTTP endpoints
 
-# gRPC Configuration
-quarkus.grpc.server.use-separate-server=false
-quarkus.grpc.server.max-inbound-message-size=2147483647
-
-# Service Discovery (Consul)
-quarkus.grpc.clients.registration-service.host=registration-service
-quarkus.grpc.clients.registration-service.name-resolver=stork
+# Service discovery
 quarkus.stork.registration-service.service-discovery.type=consul
 quarkus.stork.registration-service.service-discovery.consul-host=${CONSUL_HOST:consul}
-quarkus.stork.registration-service.service-discovery.consul-port=${CONSUL_PORT:8500}
 
-# Module Registration
-module.registration.enabled=true
+# Module registration
+module.registration.enabled=true     # Auto-register on startup
 module.registration.module-name=echo
-module.registration.host=localhost
-module.registration.port=${quarkus.http.port}
-
-# Processing Buffer (optional)
-processing.buffer.enabled=false
 ```
 
-### Environment Variables
+**Configuration philosophy:** The echo module follows "convention over configuration" - it works out of the box with sensible defaults. Override only what you need via environment variables or property overrides.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CONSUL_HOST` | `consul` | Consul service host |
-| `CONSUL_PORT` | `8500` | Consul service port |
-| `QUARKUS_HTTP_PORT` | `39000` | HTTP/gRPC server port |
-
-## Usage
-
-### Starting the Service
-
-**Development Mode:**
-```bash
-./gradlew quarkusDev
-```
-
-**Production Mode:**
-```bash
-./gradlew build
-java -jar build/quarkus-app/quarkus-run.jar
-```
-
-**Docker:**
-```bash
-docker run -p 39000:39000 \
-  -e CONSUL_HOST=consul \
-  -e CONSUL_PORT=8500 \
-  ai.pipestream.module/module-echo:latest
-```
-
-### Health Checks
-
-The module provides standard Quarkus health endpoints:
-
-```bash
-# Liveness check
-curl http://localhost:39000/echo/health/live
-
-# Readiness check
-curl http://localhost:39000/echo/health/ready
-
-# Complete health check
-curl http://localhost:39000/echo/health
-```
-
-### Swagger UI
-
-Access the OpenAPI documentation and Swagger UI:
-
-```bash
-open http://localhost:39000/echo/swagger-ui
-```
-
-## API Documentation
-
-### gRPC Service: PipeStepProcessor
-
-#### processData
-
-Processes a document and returns it with enriched metadata.
-
-**Request:**
-```protobuf
-message ModuleProcessRequest {
-  PipeDoc document = 1;
-  ServiceMetadata metadata = 2;
-}
-```
-
-**Response:**
-```protobuf
-message ModuleProcessResponse {
-  bool success = 1;
-  PipeDoc outputDoc = 2;
-  repeated string processorLogs = 3;
-  ErrorDetails errorDetails = 4;
-}
-```
-
-**Example (Java):**
-```java
-MutinyPipeStepProcessorStub stub = MutinyPipeStepProcessorGrpc.newMutinyStub(channel);
-
-ModuleProcessRequest request = ModuleProcessRequest.newBuilder()
-    .setDocument(myDocument)
-    .setMetadata(ServiceMetadata.newBuilder()
-        .setStreamId("my-stream")
-        .setPipeStepName("validation")
-        .build())
-    .build();
-
-Uni<ModuleProcessResponse> response = stub.processData(request);
-```
-
-#### getServiceRegistration
-
-Returns service metadata and performs optional health checks.
-
-**Request:**
-```protobuf
-message RegistrationRequest {
-  ModuleProcessRequest testRequest = 1;  // Optional
-}
-```
-
-**Response:**
-```protobuf
-message ServiceRegistrationMetadata {
-  string moduleName = 1;
-  string version = 2;
-  string displayName = 3;
-  string description = 4;
-  repeated string tags = 5;
-  map<string, string> metadata = 6;
-  bool healthCheckPassed = 7;
-  string healthCheckMessage = 8;
-  // ... additional fields
-}
-```
-
-#### testProcessData
-
-Test endpoint with automatic test data generation.
-
-**Request:**
-```protobuf
-message ModuleProcessRequest {
-  PipeDoc document = 1;  // Optional - generates test data if not provided
-  ServiceMetadata metadata = 2;
-}
-```
-
-**Response:**
-```protobuf
-message ModuleProcessResponse {
-  bool success = 1;
-  PipeDoc outputDoc = 2;
-  repeated string processorLogs = 3;  // All logs prefixed with [TEST]
-}
-```
+**Environment variables:**
+- `CONSUL_HOST` - Consul server hostname (default: `consul`)
+- `CONSUL_PORT` - Consul server port (default: `8500`)
 
 ## Development
 
-### Development Mode
+### Project Structure
 
-Run in development mode with live reload:
+```
+src/main/java/ai/pipestream/module/echo/
+└── EchoServiceImpl.java              # The entire module (188 lines)
 
-```bash
-./gradlew quarkusDev
+src/main/resources/
+└── application.properties             # Configuration
+
+src/test/java/                         # Unit and component tests
+src/integrationTest/java/              # Integration tests against packaged app
 ```
 
-This enables:
-- Hot reload of code changes
-- Dev UI at http://localhost:39000/q/dev
-- Debug port on 5005
-- Automatic Consul DevServices
+**Why so simple?** The echo module intentionally demonstrates how little code is needed for a functioning pipeline module. The entire business logic is in a single class with three methods. This makes it an excellent starting point for building your own modules.
 
-### Code Quality
+### Building a Custom Module
 
-The project follows standard Java coding conventions:
+To create your own pipeline module using echo as a template:
 
-- **JavaDoc** - All public APIs are documented
-- **Logging** - Using JBoss Logging
-- **Error Handling** - Comprehensive error handling with detailed messages
-- **Null Safety** - Careful null checking and Optional usage
-
-### Creating a New Module
-
-Use this echo module as a template:
-
-1. Copy the project structure
-2. Rename package from `ai.pipestream.module.echo` to your module name
-3. Implement your processing logic in `processData()`
-4. Update configuration in `application.properties`
-5. Customize service registration metadata
-
-## Testing
-
-### Running Tests
-
+**1. Copy the structure:**
 ```bash
-# Run all tests
-./gradlew test
-
-# Run integration tests
-./gradlew integrationTest
-
-# Run specific test
-./gradlew test --tests EchoServiceTest
-
-# Run with coverage
-./gradlew test jacocoTestReport
+git clone https://github.com/ai-pipestream/module-echo.git my-module
+cd my-module
 ```
 
-### Test Categories
+**2. Update module identity:**
+```properties
+# In application.properties
+module.name=my-module
+quarkus.application.name=my-module
+module.registration.module-name=my-module
+```
 
-- **Unit Tests** (`src/test`) - Test individual components in isolation
-- **Integration Tests** (`src/integrationTest`) - Test against running service
-- **gRPC Tests** - Test gRPC communication with real channels
-
-### Example Test
-
+**3. Implement your processing logic:**
 ```java
-@QuarkusTest
-class EchoServiceTest {
+@Override
+public Uni<ModuleProcessResponse> processData(ModuleProcessRequest request) {
+    PipeDoc inputDoc = request.getDocument();
 
-    @GrpcClient
-    MutinyPipeStepProcessorStub echoService;
+    // Your processing logic here
+    // Examples: extract text, enrich metadata, call external APIs, etc.
 
-    @Test
-    void testProcessData() {
-        PipeDoc testDoc = createTestDocument();
+    PipeDoc outputDoc = /* your processed document */;
 
-        ModuleProcessRequest request = ModuleProcessRequest.newBuilder()
-            .setDocument(testDoc)
-            .build();
-
-        ModuleProcessResponse response = echoService
-            .processData(request)
-            .await()
-            .atMost(Duration.ofSeconds(5));
-
-        assertTrue(response.getSuccess());
-        assertTrue(response.hasOutputDoc());
-        assertNotNull(response.getOutputDoc()
-            .getSearchMetadata()
-            .getTags()
-            .getTagDataMap()
-            .get("processed_by_echo"));
-    }
+    return Uni.createFrom().item(
+        ModuleProcessResponse.newBuilder()
+            .setSuccess(true)
+            .setOutputDoc(outputDoc)
+            .build()
+    );
 }
 ```
 
-## Deployment
+**Key patterns to follow:**
+- Always return a `ModuleProcessResponse` with success status
+- Preserve document ID and core structure
+- Add your metadata to `SearchMetadata.Tags` (don't remove existing tags)
+- Log significant operations for debugging
+- Handle errors gracefully and set `success=false` with error details
 
-### Docker Deployment
+### Testing
 
-Build and deploy with Docker:
+The echo module includes comprehensive tests demonstrating different testing approaches:
 
 ```bash
-# Build Docker image
-./gradlew build -Dquarkus.container-image.build=true
+# Unit tests - fast, mocked dependencies
+./gradlew test
 
-# Run container
-docker run -d \
-  --name echo-module \
-  -p 39000:39000 \
+# Integration tests - real gRPC channels, packaged app
+./gradlew integrationTest
+```
+
+**Test structure:**
+- `EchoServiceTestBase` - Shared test logic for both unit and integration tests
+- `EchoServiceTest` - Unit tests with Quarkus DI
+- `EchoServiceIT` - Integration tests with real gRPC client
+
+**Testing philosophy:** The base test class contains the actual test logic, while concrete test classes provide the service instance (either injected or via gRPC channel). This ensures the same tests run in both environments.
+
+## Deployment
+
+### Docker
+
+The Gradle build can generate a Docker image:
+
+```bash
+./gradlew build -Dquarkus.container-image.build=true
+```
+
+Run the container:
+
+```bash
+docker run -p 39000:39000 \
   -e CONSUL_HOST=consul \
-  -e CONSUL_PORT=8500 \
   ai.pipestream.module/module-echo:latest
 ```
 
-### Kubernetes Deployment
+**What happens at runtime:**
+1. Service starts and binds to port 39000
+2. Connects to Consul at `CONSUL_HOST:8500`
+3. Registers itself as an available pipeline module
+4. Begins accepting gRPC requests
+5. Health endpoints available at `/echo/health/*`
 
-Example Kubernetes deployment:
+### Kubernetes
 
+For production deployments, the echo module needs:
+
+**Resource requirements:**
+- **CPU:** 250m minimum, 1000m limit (module is lightweight)
+- **Memory:** 512Mi minimum, 4Gi limit (2GB+ needed for large message support)
+- **Direct Memory:** Configure `-XX:MaxDirectMemorySize=2g` for gRPC buffer
+
+**Health checks:**
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: echo-module
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: echo-module
-  template:
-    metadata:
-      labels:
-        app: echo-module
-    spec:
-      containers:
-      - name: echo
-        image: ai.pipestream.module/module-echo:latest
-        ports:
-        - containerPort: 39000
-        env:
-        - name: CONSUL_HOST
-          value: "consul-server"
-        - name: CONSUL_PORT
-          value: "8500"
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
-          limits:
-            memory: "4Gi"
-            cpu: "1000m"
+livenessProbe:
+  httpGet:
+    path: /echo/health/live
+    port: 39000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /echo/health/ready
+    port: 39000
+  initialDelaySeconds: 5
+  periodSeconds: 5
 ```
 
-### Production Considerations
+**Why these settings?** The echo module supports processing very large documents (up to 2GB via gRPC). While the processing itself is trivial, the memory footprint scales with document size. The health endpoints use Quarkus's built-in health check framework.
 
-- **Memory**: Allocate 4GB+ for large message processing
-- **Direct Memory**: Configure `-XX:MaxDirectMemorySize=2g` for gRPC
-- **Health Checks**: Configure liveness and readiness probes
-- **Monitoring**: Integrate with Prometheus for metrics
-- **Logging**: Configure log aggregation (ELK, Splunk, etc.)
-- **Security**: Use TLS for gRPC in production
+## Monitoring and Operations
 
-## Performance
+### Health Endpoints
 
-### Benchmarks
+```bash
+# Liveness - is the service running?
+curl http://localhost:39000/echo/health/live
 
-Typical performance characteristics:
+# Readiness - is the service ready to accept traffic?
+curl http://localhost:39000/echo/health/ready
+```
 
-- **Throughput**: 10,000+ documents/second (single instance)
-- **Latency**: <1ms median, <5ms p99
-- **Memory**: ~512MB baseline, scales with document size
-- **Message Size**: Supports up to 2GB messages
+**Liveness vs Readiness:**
+- Liveness checks if the process is alive (restart if failing)
+- Readiness checks if the service can handle requests (remove from load balancer if failing)
 
-### Optimization Tips
+### Logs
 
-- Enable processing buffer for batch operations
-- Tune JVM heap size based on document size
-- Use connection pooling for gRPC clients
-- Configure appropriate thread pool sizes
-
-## Troubleshooting
-
-### Common Issues
-
-**Service won't start:**
-- Check if port 39000 is available
-- Verify Consul connectivity
-- Check Java version (must be 21+)
-
-**Registration fails:**
-- Verify Consul is running and accessible
-- Check network connectivity to Consul
-- Review registration service logs
-
-**Large message failures:**
-- Increase `quarkus.grpc.server.max-inbound-message-size`
-- Allocate more heap memory with `-Xmx`
-- Configure `-XX:MaxDirectMemorySize` for gRPC
-
-### Debug Logging
-
-Enable debug logging:
+Enable debug logging to see document flow:
 
 ```properties
 quarkus.log.category."ai.pipestream".level=DEBUG
 ```
 
+Example log output:
+```
+DEBUG [ai.pi.mo.ec.EchoServiceImpl] Echo service received document: doc-12345
+DEBUG [ai.pi.mo.ec.EchoServiceImpl] Echo service returning success: true
+```
+
+### Common Issues
+
+**Port already in use:**
+The default port 39000 may conflict with other services. Override with:
+```bash
+./gradlew quarkusDev -Dquarkus.http.port=39001
+```
+
+**Can't connect to Consul:**
+In development, Consul DevServices should start automatically. If you see connection errors, verify Docker is running (DevServices requires Docker).
+
+**Large message failures:**
+If processing fails for documents >100MB, you may need to increase the max message size:
+```properties
+quarkus.grpc.server.max-inbound-message-size=2147483647  # 2GB
+```
+
+Also ensure JVM has sufficient heap: `-Xmx4g`
+
+## API Reference
+
+Complete API documentation available via JavaDoc on all public methods in `EchoServiceImpl.java`. The source code is well-documented with:
+- Method purpose and behavior
+- Parameter descriptions
+- Return value semantics
+- Usage examples and patterns
+
+For interactive API exploration, run the service and visit:
+```
+http://localhost:39000/echo/swagger-ui
+```
+
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
+Contributions welcome! The echo module is intentionally simple to make it easy to understand and modify. When contributing:
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Setup
-
-1. Ensure Java 21+ is installed
-2. Install Docker for integration tests
-3. Run `./gradlew build` to verify setup
-4. Use `./gradlew quarkusDev` for development
+1. Maintain the simplicity - this is a reference implementation
+2. Add tests for any behavior changes
+3. Update JavaDoc for public API changes
+4. Keep the README focused on "why" not just "what"
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-- **Documentation**: [PipeStream Docs](https://docs.pipestream.ai)
-- **Issues**: [GitHub Issues](https://github.com/ai-pipestream/module-echo/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ai-pipestream/module-echo/discussions)
-
-## Acknowledgments
-
-- Built with [Quarkus](https://quarkus.io/)
-- gRPC implementation via [gRPC-Java](https://github.com/grpc/grpc-java)
-- Reactive streams with [Mutiny](https://smallrye.io/smallrye-mutiny/)
-- Service discovery via [Consul](https://www.consul.io/)
+MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
-**Version**: 0.1.2-SNAPSHOT
-**Last Updated**: 2025-11-12
-**Maintained by**: PipeStream Team
+**Version:** 0.1.2-SNAPSHOT
+**Maintained by:** PipeStream Team
